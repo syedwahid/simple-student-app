@@ -7,50 +7,47 @@ pipeline {
                 sh '''
                     echo "🔨 Building Docker image..."
                     docker build -t simple-student-app:latest .
-                    echo "✅ Image built successfully"
+                    echo "✅ Image built"
                 '''
             }
         }
         
-        stage('Load to KIND Cluster') {
+        stage('Deploy Container') {
             steps {
                 sh '''
-                    echo "📤 Loading image to KIND cluster..."
-                    kind load docker-image simple-student-app:latest --name student-app
-                    echo "✅ Image loaded to KIND"
+                    echo "🚀 Deploying container..."
+                    
+                    # Stop and remove old container
+                    docker stop simple-student-app 2>/dev/null || true
+                    docker rm simple-student-app 2>/dev/null || true
+                    
+                    # Run new container
+                    docker run -d \
+                        --name simple-student-app \
+                        --restart unless-stopped \
+                        -p 30080:3000 \
+                        simple-student-app:latest
+                    
+                    echo "✅ Container deployed"
                 '''
             }
         }
         
-        stage('Deploy to Kubernetes') {
+        stage('Verify') {
             steps {
                 sh '''
-                    echo "🚀 Deploying to Kubernetes..."
+                    echo "🔍 Verifying deployment..."
+                    sleep 3
                     
-                    # Use the kubeconfig we already set up
-                    export KUBECONFIG=/root/.kube/config
+                    # Test the application
+                    if curl -s http://localhost:30080/api/health > /dev/null; then
+                        echo "✅ Application is running!"
+                        curl -s http://localhost:30080/api/health | head -3
+                    else
+                        echo "⚠️ Application may still be starting..."
+                    fi
                     
-                    # Create namespace if needed
-                    kubectl create namespace student-app --dry-run=client -o yaml | kubectl apply -f -
-                    
-                    # Deploy the application
-                    kubectl apply -f k8s-deployment.yaml
-                    
-                    # Show deployment status
                     echo ""
-                    echo "📊 Deployment Status:"
-                    kubectl get pods -n student-app
-                    kubectl get svc -n student-app
-                    
-                    echo ""
-                    echo "✅ Deployment complete!"
-                '''
-            }
-        }
-        
-        stage('Display Info') {
-            steps {
-                sh '''
                     echo "═══════════════════════════════════════════════════════════"
                     echo "🎉 DEPLOYMENT SUCCESSFUL!"
                     echo "═══════════════════════════════════════════════════════════"
@@ -59,10 +56,6 @@ pipeline {
                     echo "   URL: http://localhost:30080"
                     echo "   API: http://localhost:30080/api/students"
                     echo "   Health: http://localhost:30080/api/health"
-                    echo ""
-                    echo "📊 Check status:"
-                    echo "   kubectl get pods -n student-app"
-                    echo "   kubectl logs -n student-app deployment/simple-student-app"
                     echo ""
                 '''
             }
@@ -75,11 +68,6 @@ pipeline {
         }
         failure {
             echo '❌ Pipeline failed!'
-            sh '''
-                echo "Debug info:"
-                docker images | grep simple-student-app
-                kind get clusters
-            '''
         }
     }
 }
