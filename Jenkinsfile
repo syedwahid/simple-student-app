@@ -1,42 +1,32 @@
 pipeline {
     agent any
     
+    environment {
+        KUBECONFIG = "/root/.kube/config"
+    }
+    
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t simple-student-app:latest .'
-            }
-        }
-        
-        stage('Load and Deploy') {
+        stage('Build Image') {
             steps {
                 sh '''
-                    # Load image to KIND
+                    echo "Building Docker image..."
+                    docker build -t simple-student-app:latest .
+                '''
+            }
+        }
+        
+        stage('Deploy to KIND') {
+            steps {
+                sh '''
                     echo "Loading image to KIND cluster..."
                     kind load docker-image simple-student-app:latest --name student-app
                     
-                    # Setup kubeconfig
-                    export KUBECONFIG=/root/.kube/config
-                    
-                    # Create namespace
-                    kubectl create namespace student-app --dry-run=client -o yaml | kubectl apply -f -
-                    
-                    # Deploy
+                    echo "Deploying to Kubernetes..."
                     kubectl apply -f k8s-deployment.yaml
                     
-                    # Wait for pods
-                    echo "Waiting for pods to be ready..."
-                    sleep 20
-                    
-                    # Show status
+                    echo "Waiting for deployment..."
+                    sleep 15
                     kubectl get pods -n student-app
-                    kubectl get svc -n student-app
                 '''
             }
         }
@@ -44,15 +34,12 @@ pipeline {
         stage('Verify') {
             steps {
                 sh '''
-                    export KUBECONFIG=/root/.kube/config
-                    NODE_PORT=$(kubectl get svc student-app-service -n student-app -o jsonpath='{.spec.ports[0].nodePort}')
                     echo "═══════════════════════════════════════════════════════════"
                     echo "✅ DEPLOYMENT SUCCESSFUL!"
                     echo "═══════════════════════════════════════════════════════════"
                     echo ""
-                    echo "🌐 ACCESS YOUR APPLICATION:"
-                    echo "   URL: http://localhost:${NODE_PORT}"
-                    echo "   API: http://localhost:${NODE_PORT}/api/students"
+                    echo "🌐 Application URL: http://localhost:30080"
+                    echo "🌐 API: http://localhost:30080/api/students"
                     echo ""
                 '''
             }
@@ -61,7 +48,7 @@ pipeline {
     
     post {
         success {
-            echo '🎉 Pipeline completed successfully!'
+            echo '🎉 Pipeline completed!'
         }
         failure {
             echo '❌ Pipeline failed!'
