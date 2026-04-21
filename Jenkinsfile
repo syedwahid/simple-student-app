@@ -2,11 +2,22 @@ pipeline {
     agent any
     
     stages {
-        stage('Deploy to Kubernetes') {
+        stage('Trigger Deployment') {
             steps {
                 sh '''
-                    echo "Triggering deployment on HOST via SSH..."
-                    ssh -i /var/jenkins_home/.ssh/jenkins_host -o StrictHostKeyChecking=no syedwahid@host.docker.internal "~/deploy-to-k8s.sh"
+                    echo "Triggering deployment on HOST..."
+                    sh 'touch /trigger/deploy'
+                    echo "✅ Deployment triggered! Watch at http://localhost:30080"
+                '''
+            }
+        }
+        
+        stage('Wait for Deployment') {
+            steps {
+                sh '''
+                    echo "Waiting for deployment to complete..."
+                    sleep 5
+                    echo "✅ Deployment should be complete"
                 '''
             }
         }
@@ -19,6 +30,7 @@ pipeline {
                     echo "═══════════════════════════════════════════════════════════"
                     echo ""
                     echo "🌐 Application URL: http://localhost:30080"
+                    echo "🌐 API: http://localhost:30080/api/students"
                     echo ""
                 '''
             }
