@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Student App</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+        button { background: #4CAF50; color: white; padding: 10px; margin: 5px; border: none; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        .edit-btn { background: #ff9800; }
+        .delete-btn { background: #f44336; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 15% auto; padding: 20px; width: 300px; border-radius: 10px; }
+        input, select { width: 100%; padding: 8px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Simple Student Management</h1>
+        <button onclick="showAddModal()">Add Student</button>
+        <input type="text" id="search" placeholder="Search..." onkeyup="searchStudents()" style="margin: 10px; padding: 5px;">
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Age</th><th>Course</th><th>Grade</th><th>Actions</th></tr></thead>
+            <tbody id="studentTable"></tbody>
+        </table>
+    </div>
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Add Student</h2>
+            <input type="hidden" id="studentId">
+            <input type="text" id="name" placeholder="Name">
+            <input type="number" id="age" placeholder="Age">
+            <input type="text" id="course" placeholder="Course">
+            <select id="grade"><option>A</option><option>B</option><option>C</option><option>D</option><option>F</option></select>
+            <button onclick="saveStudent()">Save</button>
+            <button onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+    <script>
+        let students = [];
+        async function loadStudents() {
+            const res = await fetch('/api/students');
+            students = await res.json();
+            renderTable();
+        }
+        function renderTable(data = students) {
+            const tbody = document.getElementById('studentTable');
+            tbody.innerHTML = '';
+            data.forEach(s => {
+                tbody.innerHTML += `<tr>
+                    <td>${s.id}</td><td>${s.name}</td><td>${s.age}</td>
+                    <td>${s.course}</td><td>${s.grade}</td>
+                    <td><button class="edit-btn" onclick="editStudent(${s.id})">Edit</button>
+                    <button class="delete-btn" onclick="deleteStudent(${s.id})">Delete</button></td>
+                </tr>`;
+            });
+        }
+        function searchStudents() {
+            const term = document.getElementById('search').value.toLowerCase();
+            const filtered = students.filter(s => s.name.toLowerCase().includes(term));
+            renderTable(filtered);
+        }
+        function showAddModal() {
+            document.getElementById('modalTitle').innerText = 'Add Student';
+            document.getElementById('studentId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('age').value = '';
+            document.getElementById('course').value = '';
+            document.getElementById('modal').style.display = 'block';
+        }
+        async function editStudent(id) {
+            const student = students.find(s => s.id === id);
+            document.getElementById('modalTitle').innerText = 'Edit Student';
+            document.getElementById('studentId').value = student.id;
+            document.getElementById('name').value = student.name;
+            document.getElementById('age').value = student.age;
+            document.getElementById('course').value = student.course;
+            document.getElementById('grade').value = student.grade;
+            document.getElementById('modal').style.display = 'block';
+        }
+        async function saveStudent() {
+            const id = document.getElementById('studentId').value;
+            const student = {
+                name: document.getElementById('name').value,
+                age: parseInt(document.getElementById('age').value),
+                course: document.getElementById('course').value,
+                grade: document.getElementById('grade').value
+            };
+            if (id) {
+                await fetch(`/api/students/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(student) });
+            } else {
+                await fetch('/api/students', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(student) });
+            }
+            closeModal();
+            loadStudents();
+        }
+        async function deleteStudent(id) {
+            if (confirm('Delete this student?')) {
+                await fetch(`/api/students/${id}`, { method: 'DELETE' });
+                loadStudents();
+            }
+        }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+        loadStudents();
+    </script>
+</body>
+</html>
