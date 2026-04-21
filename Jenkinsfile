@@ -1,90 +1,75 @@
 pipeline {
     agent any
     
-    environment {
-        APP_NAME = "simple-student-app"
-        K8S_NAMESPACE = "student-app"
-        DOCKER_IMAGE = "simple-student-app:latest"
-    }
-    
     stages {
         stage('Checkout') {
             steps {
-                echo '📦 Cloning repository from GitHub...'
                 checkout scm
-                echo '✅ Code checked out successfully'
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                echo '🔨 Building Docker image...'
-                sh '''
-                    docker build -t ${DOCKER_IMAGE} .
-                    docker images | grep ${APP_NAME}
-                '''
-                echo '✅ Docker image built successfully'
+                sh 'docker build -t simple-student-app:latest .'
             }
         }
         
-        stage('Load to KIND Cluster') {
+        stage('Setup KIND Cluster') {
             steps {
-                echo '📤 Loading image to KIND cluster...'
                 sh '''
-                    kind load docker-image ${DOCKER_IMAGE} --name student-app
+                    # Check if KIND cluster exists, create if not
+                    if ! kind get clusters 2>/dev/null | grep -q student-app; then
+                        echo "Creating KIND cluster..."
+                        kind create cluster --name student-app --wait 2m
+                    else
+                        echo "KIND cluster already exists"
+                    fi
+                    
+                    # Ensure kubeconfig is set up
+                    kind export kubeconfig --name student-app --kubeconfig /var/jenkins_home/.kube/config
+                    kubectl cluster-info
                 '''
-                echo '✅ Image loaded to KIND'
+            }
+        }
+        
+        stage('Load Image to KIND') {
+            steps {
+                sh '''
+                    echo "Loading image to KIND cluster..."
+                    kind load docker-image simple-student-app:latest --name student-app
+                '''
             }
         }
         
         stage('Deploy to Kubernetes') {
             steps {
-                echo '🚀 Deploying application to Kubernetes...'
                 sh '''
-                    kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                    # Create namespace
+                    kubectl create namespace student-app --dry-run=client -o yaml | kubectl apply -f -
+                    
+                    # Deploy application
                     kubectl apply -f k8s-deployment.yaml
-                    echo "Waiting for deployment to be ready..."
-                    kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=90s
+                    
+                    # Wait for deployment
+                    echo "Waiting for deployment..."
+                    kubectl wait --for=condition=ready pod -l app=simple-student-app -n student-app --timeout=90s || true
                 '''
-                echo '✅ Deployment complete'
             }
         }
         
         stage('Verify Deployment') {
             steps {
-                echo '🔍 Verifying deployment...'
                 sh '''
                     echo "📊 Pod Status:"
-                    kubectl get pods -n ${K8S_NAMESPACE}
-                    
+                    kubectl get pods -n student-app
                     echo ""
                     echo "🌐 Service Status:"
-                    kubectl get svc -n ${K8S_NAMESPACE}
+                    kubectl get svc -n student-app
+                    echo ""
                     
-                    echo ""
-                    NODE_PORT=$(kubectl get svc ${APP_NAME}-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
+                    # Get node port
+                    NODE_PORT=$(kubectl get svc student-app-service -n student-app -o jsonpath='{.spec.ports[0].nodePort}')
                     echo "✅ Application available at: http://localhost:${NODE_PORT}"
-                '''
-                echo '✅ Verification complete'
-            }
-        }
-        
-        stage('Display Access Info') {
-            steps {
-                echo '═══════════════════════════════════════════════════════════'
-                echo '🎉 DEPLOYMENT SUCCESSFUL!'
-                echo '═══════════════════════════════════════════════════════════'
-                sh '''
-                    NODE_PORT=$(kubectl get svc ${APP_NAME}-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
-                    echo ""
-                    echo "🌐 ACCESS YOUR APPLICATION:"
-                    echo "   URL: http://localhost:${NODE_PORT}"
-                    echo "   API: http://localhost:${NODE_PORT}/api/students"
-                    echo "   Health: http://localhost:${NODE_PORT}/api/health"
-                    echo ""
-                    echo "📊 MANAGE DEPLOYMENT:"
-                    echo "   kubectl get pods -n ${K8S_NAMESPACE}"
-                    echo "   kubectl logs -n ${K8S_NAMESPACE} deployment/${APP_NAME}"
                 '''
             }
         }
@@ -92,27 +77,16 @@ pipeline {
     
     post {
         success {
-            echo '🎉 CI/CD Pipeline completed successfully!'
-            script {
-                currentBuild.description = 'Deployed successfully to Kubernetes'
-            }
+            echo '🎉 Pipeline completed successfully!'
+            echo '🌐 Access your app at: http://localhost:30080'
         }
         failure {
             echo '❌ Pipeline failed!'
-            script {
-                currentBuild.description = 'Build failed - Check console output'
-            }
             sh '''
-                echo "=== DEBUGGING INFORMATION ==="
-                echo "KIND clusters:"
+                echo "Debug:"
                 kind get clusters
-                echo ""
-                echo "Docker images:"
-                docker images | grep simple-student-app || echo "Image not found"
+                docker images | grep simple-student-app
             '''
-        }
-        always {
-            echo "Pipeline execution finished"
         }
     }
 }
