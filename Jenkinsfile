@@ -14,62 +14,50 @@ pipeline {
             }
         }
         
-        stage('Setup KIND Cluster') {
+        stage('Deploy to KIND') {
             steps {
                 sh '''
-                    # Check if KIND cluster exists, create if not
-                    if ! kind get clusters 2>/dev/null | grep -q student-app; then
-                        echo "Creating KIND cluster..."
-                        kind create cluster --name student-app --wait 2m
-                    else
-                        echo "KIND cluster already exists"
+                    # Use host IP for kubectl
+                    export HOST_IP=$(ip route | grep docker0 | awk '{print $9}' | cut -d'/' -f1)
+                    if [ -z "$HOST_IP" ]; then
+                        export HOST_IP="172.17.0.1"
                     fi
                     
-                    # Ensure kubeconfig is set up
-                    kind export kubeconfig --name student-app --kubeconfig /var/jenkins_home/.kube/config
-                    kubectl cluster-info
-                '''
-            }
-        }
-        
-        stage('Load Image to KIND') {
-            steps {
-                sh '''
-                    echo "Loading image to KIND cluster..."
-                    kind load docker-image simple-student-app:latest --name student-app
-                '''
-            }
-        }
-        
-        stage('Deploy to Kubernetes') {
-            steps {
-                sh '''
-                    # Create namespace
-                    kubectl create namespace student-app --dry-run=client -o yaml | kubectl apply -f -
+                    # Get KIND port
+                    export KIND_PORT=$(docker inspect student-app-control-plane --format='{{(index (index .NetworkSettings.Ports "6443/tcp") 0).HostPort}}' 2>/dev/null)
+                    if [ -z "$KIND_PORT" ]; then
+                        export KIND_PORT="6443"
+                    fi
                     
-                    # Deploy application
+                    # Create kubeconfig
+                    mkdir -p $HOME/.kube
+                    cat > $HOME/.kube/config << K8SCONFIG
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://${HOST_IP}:${KIND_PORT}
+    insecure-skip-tls-verify: true
+  name: kind-student-app
+contexts:
+- context:
+    cluster: kind-student-app
+    user: kind-student-app
+  name: kind-student-app
+current-context: kind-student-app
+users:
+- name: kind-student-app
+  user: {}
+K8SCONFIG
+                    
+                    # Deploy
+                    kubectl create namespace student-app --dry-run=client -o yaml | kubectl apply -f -
                     kubectl apply -f k8s-deployment.yaml
                     
-                    # Wait for deployment
-                    echo "Waiting for deployment..."
-                    kubectl wait --for=condition=ready pod -l app=simple-student-app -n student-app --timeout=90s || true
-                '''
-            }
-        }
-        
-        stage('Verify Deployment') {
-            steps {
-                sh '''
-                    echo "📊 Pod Status:"
+                    # Wait for pods
+                    sleep 15
                     kubectl get pods -n student-app
-                    echo ""
-                    echo "🌐 Service Status:"
                     kubectl get svc -n student-app
-                    echo ""
-                    
-                    # Get node port
-                    NODE_PORT=$(kubectl get svc student-app-service -n student-app -o jsonpath='{.spec.ports[0].nodePort}')
-                    echo "✅ Application available at: http://localhost:${NODE_PORT}"
                 '''
             }
         }
@@ -77,16 +65,10 @@ pipeline {
     
     post {
         success {
-            echo '🎉 Pipeline completed successfully!'
-            echo '🌐 Access your app at: http://localhost:30080'
+            echo '✅ Deployment successful! Access at http://localhost:30080'
         }
         failure {
-            echo '❌ Pipeline failed!'
-            sh '''
-                echo "Debug:"
-                kind get clusters
-                docker images | grep simple-student-app
-            '''
+            echo '❌ Deployment failed!'
         }
     }
 }
