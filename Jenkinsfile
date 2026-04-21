@@ -5,26 +5,22 @@ pipeline {
         APP_NAME = "simple-student-app"
         K8S_NAMESPACE = "student-app"
         DOCKER_IMAGE = "simple-student-app:latest"
-        DOCKER_REGISTRY = ""  # Leave empty for local KIND
-    }
-    
-    tools {
-        nodejs 'nodejs'  // Optional: if you have NodeJS tool configured
+        DOCKER_REGISTRY = ""
     }
     
     stages {
-        stage('📦 Checkout') {
+        stage('Checkout') {
             steps {
-                echo 'Cloning repository from GitHub...'
+                echo '📦 Cloning repository from GitHub...'
                 checkout scm
                 echo "✅ Code checked out from ${env.GIT_URL}"
                 sh 'ls -la'
             }
         }
         
-        stage('🔨 Build Docker Image') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
+                echo '🔨 Building Docker image...'
                 sh '''
                     echo "Building image: ${DOCKER_IMAGE}"
                     docker build -t ${DOCKER_IMAGE} .
@@ -34,9 +30,9 @@ pipeline {
             }
         }
         
-        stage('📤 Load to KIND Cluster') {
+        stage('Load to KIND Cluster') {
             steps {
-                echo 'Loading image to KIND cluster...'
+                echo '📤 Loading image to KIND cluster...'
                 sh '''
                     echo "Loading image to KIND cluster: student-app"
                     kind load docker-image ${DOCKER_IMAGE} --name student-app
@@ -45,17 +41,12 @@ pipeline {
             }
         }
         
-        stage('🚀 Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes') {
             steps {
-                echo 'Deploying application to Kubernetes...'
+                echo '🚀 Deploying application to Kubernetes...'
                 sh '''
-                    # Create namespace if not exists
                     kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                    
-                    # Deploy application
                     kubectl apply -f k8s-deployment.yaml
-                    
-                    # Wait for deployment to complete
                     echo "Waiting for deployment to be ready..."
                     kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=90s
                 '''
@@ -63,9 +54,9 @@ pipeline {
             }
         }
         
-        stage('🔍 Verify Deployment') {
+        stage('Verify Deployment') {
             steps {
-                echo 'Verifying deployment...'
+                echo '🔍 Verifying deployment...'
                 sh '''
                     echo "📊 Pod Status:"
                     kubectl get pods -n ${K8S_NAMESPACE}
@@ -75,13 +66,6 @@ pipeline {
                     kubectl get svc -n ${K8S_NAMESPACE}
                     
                     echo ""
-                    echo "🧪 Testing Application..."
-                    
-                    # Test if pods are running
-                    POD_COUNT=$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${APP_NAME} --field-selector=status.phase=Running --no-headers | wc -l)
-                    echo "Running pods: ${POD_COUNT}/2"
-                    
-                    # Get service node port
                     NODE_PORT=$(kubectl get svc ${APP_NAME}-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
                     echo "Application available at: http://localhost:${NODE_PORT}"
                 '''
@@ -89,9 +73,9 @@ pipeline {
             }
         }
         
-        stage('📊 Display Access Info') {
+        stage('Display Access Info') {
             steps {
-                echo 'Application Access Information...'
+                echo '📊 Application Access Information...'
                 sh '''
                     echo "═══════════════════════════════════════════════════════════"
                     echo "🎉 DEPLOYMENT SUCCESSFUL!"
@@ -121,8 +105,6 @@ pipeline {
         failure {
             echo '❌ Pipeline failed!'
             currentBuild.description = "❌ Build failed - Check console output"
-            
-            // Print logs for debugging
             sh '''
                 echo "=== DEBUGGING INFORMATION ==="
                 echo "KIND clusters:"
@@ -132,11 +114,13 @@ pipeline {
                 docker images | grep simple-student-app || echo "Image not found"
                 echo ""
                 echo "Kubernetes pods:"
-                kubectl get pods -n ${K8S_NAMESPACE} 2>/dev/null || echo "No pods found"
+                kubectl get pods -n student-app 2>/dev/null || echo "No pods found"
             '''
         }
         always {
-            echo "Build #${BUILD_NUMBER} completed on ${new Date()}"
+            script {
+                echo "Build #${BUILD_NUMBER} completed"
+            }
         }
     }
 }
