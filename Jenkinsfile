@@ -1,32 +1,12 @@
 pipeline {
     agent any
     
-    environment {
-        KUBECONFIG = "/root/.kube/config"
-    }
-    
     stages {
-        stage('Build Image') {
+        stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                    echo "Building Docker image..."
-                    docker build -t simple-student-app:latest .
-                '''
-            }
-        }
-        
-        stage('Deploy to KIND') {
-            steps {
-                sh '''
-                    echo "Loading image to KIND cluster..."
-                    kind load docker-image simple-student-app:latest --name student-app
-                    
-                    echo "Deploying to Kubernetes..."
-                    kubectl apply -f k8s-deployment.yaml
-                    
-                    echo "Waiting for deployment..."
-                    sleep 15
-                    kubectl get pods -n student-app
+                    echo "Triggering deployment on HOST via SSH..."
+                    ssh -i /var/jenkins_home/.ssh/jenkins_host -o StrictHostKeyChecking=no syedwahid@host.docker.internal "~/deploy-to-k8s.sh"
                 '''
             }
         }
@@ -35,23 +15,13 @@ pipeline {
             steps {
                 sh '''
                     echo "═══════════════════════════════════════════════════════════"
-                    echo "✅ DEPLOYMENT SUCCESSFUL!"
+                    echo "✅ DEPLOYMENT TRIGGERED SUCCESSFULLY!"
                     echo "═══════════════════════════════════════════════════════════"
                     echo ""
                     echo "🌐 Application URL: http://localhost:30080"
-                    echo "🌐 API: http://localhost:30080/api/students"
                     echo ""
                 '''
             }
-        }
-    }
-    
-    post {
-        success {
-            echo '🎉 Pipeline completed!'
-        }
-        failure {
-            echo '❌ Pipeline failed!'
         }
     }
 }
