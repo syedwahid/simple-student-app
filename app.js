@@ -7,7 +7,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 let students = [
-    { id: 1, name: 'Alice Johnson', age: 20, course: 'Computer Science', grade: 'A' },
+    { id: 1, name: 'Alice2 Johnson', age: 20, course: 'Computer Science', grade: 'A' },
     { id: 2, name: 'Bob Smith', age: 22, course: 'Mathematics', grade: 'B' },
     { id: 3, name: 'Carol Davis', age: 21, course: 'Physics', grade: 'A' },
     { id: 4, name: 'David Wilson', age: 23, course: 'Engineering', grade: 'C' },
