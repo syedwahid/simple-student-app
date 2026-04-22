@@ -17,7 +17,7 @@ let students = [
 let nextId = 6;
 
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Simple Student App is running!', studentCount: students.length });
+    res.json({ status: 'OK', message: 'Simple Student App is running! V2', studentCount: students.length });
 });
 
 app.get('/api/students', (req, res) => {
